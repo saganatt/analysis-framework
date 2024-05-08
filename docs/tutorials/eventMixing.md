@@ -52,6 +52,12 @@ for (auto& [t1, t2] : combinations(CombinationsFullIndexPolicy(tracks1, tracks2)
 }
 ```
 
+You can also obtain bin number assigned by the BinningPolicy to each collision:
+
+```cpp
+int bin = binningOnPositions.getBin({c1.posX(), c1.posY()});
+```
+
 ## MixedEventsInsideProcess
 
 This is the same task as above, with the difference that binning policy and `SameKindPair` are declared inside `process()`. This is particularly helpful when your bins are ConfigurableAxes. The standard out-of-process declaration of binning policy and corresponding mixing structure would take only default configurable values.
@@ -126,3 +132,43 @@ Finally, the mixing structure is defined like in previous examples:
 ```cpp
 SameKindPair<aod::Collisions, aod::Tracks, BinningType> pair{binningWithLambda, 5, -1, collisions, tracksTuple, &cache};
 ```
+
+Please note that currently `getBin()` for FlexibleBinningPolicy requires explicit tuple construction as follows:
+ 
+```cpp
+int bin = binningWithLambda.getBin(std::tuple(getTracksSize(c1), c1.posZ()));
+```
+
+## MixedEventsCounters
+
+This task shows how to extract variables needed for weighted correlations:
+- currentWindowNeighbours(): the number of other collisions to pair with;
+ the real number is smaller than currentWindowNeighbours if we are at the end of the sliding window or bin
+- bool isNewWindow(): true only for the first pair from each sliding window
+
+Example:
+Mixing of collisions with parameters: category neighbours: 4, sliding window size: 5.
+
+Collision indices in a bin: 1, 3, 5, 6, 10, 13, 16, 19, 23, 26, 29, 34, 36, 38
+
+Strictly upper pairs: (1, 3), (1, 5), (1, 6), (1, 10), (3, 5), (3, 6), (3, 10), (3, 13), (5, 6), (5, 10), (5, 13) , (5, 16)
+currentWindowNeighbours(): 4, 3, 2,    1,          4,       3,        2,         1,        4,       3,         2,         
+
+```warning
+The same number of `currentWindowNeighbours` is returned for all kinds of block combinations:
+- strictly upper: the first collision will is paired with exactly currentWindowNeighbours other collisions.
+- upper: the first collision is paired with (currentWindowNeighbours + 1) collisions, including itself.
+- full: (currentWindowNeighbours + 1) pairs with the first collision in the first position in the tuple (c1) + there are other combinations with the first collision at other positions.
+```
+
+The iteration over mixed pairs must be coded differently in order to get the GroupedCombinations iterator object:
+
+```cpp
+for (auto it = pair.begin(); it != pair.end(); it++) {
+  auto& [c1, tracks1, c2, tracks2] = *it;
+}
+```
+
+Inside the loop, you can extract needed variables by calling: `it.isNewWindow()` and `it.currentWindowNeighbours()`.
+
+You can refer to the <a href="https://github.com/AliceO2Group/O2Physics/blob/143b6ca8cc15b217ccf56df63115f308964ae05a/PWGCF/Tasks/correlations.cxx" target="_blank">correlations task</a> for a real-analysis example of weighted correlations using the aforementioned variables.
